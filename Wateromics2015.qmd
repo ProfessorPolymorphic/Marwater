@@ -1,0 +1,361 @@
+---
+title: "Wateromics 2015"
+author: "Marwa Elsayed"
+date: "2023-10-10"
+categories: [Assignments, Data Description]
+output: 
+  html_document:
+  code_folding: hide
+---
+
+For this assignment, we will explore how water consumption varies by median household income across U.S. counties for the year 2015, on a per capita basis.
+
+Focusing on three sectors: domestic, industrial, and irrigation. The research question is: How is 2015 per capita water use in domestic, industrial, and irrigation sectors correlated with median household income across U.S. counties?
+
+**The plan is as follows:**
+
+1.  Clean and merge both datasets.
+
+2.  Compute per capita water use for each sector.
+
+3.  Conduct correlation analysis between per capita water use and median household income across sectors.
+
+For water data, [here](https://www.sciencebase.gov/catalog/item/get/5af3311be4b0da30c1b245d8)
+
+For income data, [Census Data on Income and Poverty](https://data.census.gov/table?lastDisplayedRow=30&t=Income+and+Earnings&q=Income+and+Earnings&hidePreview=true&table=S1903&tid=ACSST5Y2015.S1903&g=050XX00US12001&vintage=2017&layer=county&cid=S1901_C01_001E&y=2015&tm=true). I chose the American Community Survey 5-year estimates for the analysis as the 5-year estimate gives more reliable data for all US counties, unlike the 1-year estimate as they provide the most current data but have a smaller sample size.
+
+## Reading the Datasets
+
+```{r}
+library(tidyverse) 
+library(readxl) 
+library(ggside)
+library(ggplot2)
+```
+
+```{r}
+# Reading the datasets and making sure the strings are not automatically converted to factors for text manipulation if needed
+waterusage <- read.csv("usco2015v2.0.csv", skip = 1)
+incomedata <- read.csv("ACSST5Y2015.S1901-Data.csv", skip = 1, stringsAsFactors = FALSE)
+
+# waterdatadictionary <- read_excel("usco2015v2.0.xlsx", sheet = "DataDictionary") 
+
+waterusage <- waterusage %>%
+  mutate(FIPS_Code = str_pad(FIPS, width = 5, pad = "0") ) # Create a new column 'FIPS_Code' by padding 'FIPS' values to 5 characters with zeros
+
+```
+
+## To calculate the median household income
+
+In the income data, we have an "Estimate" and a "Margin of Error." The margin of error provides a range within which the true value HI!!!!likely falls. For a precise analysis, we will use both in calculating the lower and upper bounds of the estimated median income. Then these bounds can be averaged to create a single, more robust figure that accounts for the estimated range of incomes.
+
+This approach will account for the variability in the estimates and present a more accurate range of the median income values across different counties.
+
+```{r}
+# Checking data type of variables of interest
+class(incomedata$`Households..Estimate..Median.income..dollars.`)
+class(incomedata$`Households..Margin.of.Error..Median.income..dollars.`)
+
+# Convert character columns to numeric
+incomedata$`Households..Estimate..Median.income..dollars.` <- as.numeric(as.character(incomedata$`Households..Estimate..Median.income..dollars.`))
+incomedata$`Households..Margin.of.Error..Median.income..dollars.` <- as.numeric(as.character(incomedata$`Households..Margin.of.Error..Median.income..dollars.`))
+
+# Given that NAs were introduced, will have to check how many we have
+summary(incomedata$`Households..Estimate..Median.income..dollars.`)
+summary(incomedata$`Households..Margin.of.Error..Median.income..dollars.`)
+
+# We have one NA in each, so I will just leave it
+
+# Calculating the lower and upper bounds for median income using the margin of error
+# Then, averaging these bounds to create a single measure of median income.
+
+# Calculate the lower bound
+incomedata$Lower_Bound <- incomedata$`Households..Estimate..Median.income..dollars.` - incomedata$`Households..Margin.of.Error..Median.income..dollars.`
+
+# Calculate the upper bound
+incomedata$Upper_Bound <- incomedata$`Households..Estimate..Median.income..dollars.` + incomedata$`Households..Margin.of.Error..Median.income..dollars.`
+
+# Average the lower and upper bounds to get a single measure of median income
+incomedata$Avg_Median_Income <- (incomedata$Lower_Bound + incomedata$Upper_Bound) / 2
+
+```
+
+## Cleaning income dataset to focus on variables of interest
+
+```{r}
+# Keeping the needed columns in incomedata
+cleaned_incomedata <- incomedata %>% 
+  select(Geography, `Geographic.Area.Name`, Avg_Median_Income)
+
+# Cleaning the Geographic.Area.Name to remove the state name and comma and keep county only
+cleaned_incomedata$`Geographic.Area.Name` <- gsub(",.*$", "", cleaned_incomedata$`Geographic.Area.Name`)
+
+# Renaming columns for better readability
+cleaned_incomedata <- cleaned_incomedata %>%
+  rename(
+    FIPS = Geography,
+    County = `Geographic.Area.Name`,
+    Median_Income = Avg_Median_Income
+  )
+
+# Remove prefix and extract relevant FIPS
+# The ? in the regular expression makes the last "0" optional
+library(stringr)
+
+cleaned_incomedata$FIPS <- str_replace_all(cleaned_incomedata$FIPS, "0500000US0?", "")
+
+
+```
+
+## Cleaning Water Usage Dataset to focus on variables of interest
+
+### Domestic Use:
+
+1.  **DO.WFrTo**: The total self-supplied withdrawals, which is a comprehensive measure of domestic water use without public supply.
+
+2.  **DO.SSPCp**: This is the per capita self-supplied water use. It's already normalized by population and will be useful for direct comparisons.
+
+3.  **DO.PSPCp**: This is the per capita use for publicly supplied water, another metric normalized by population.
+
+4.  **DO.WDelv**: This is the total use, which includes both withdrawals and deliveries. It's the most complete measure of water use at the domestic level.
+
+-   Depending on the granularity of the analysis, we can either focus on the most comprehensive measure (DO-WDelv) or break it down to see if self-supplied vs. publicly supplied makes a difference in the correlation with income (DO-SSPCp and DO-PSPCp).
+
+### Industrial Use:
+
+1.  IN.WGWTo: Total self-supplied groundwater withdrawals, both fresh and saline. It will provide a comprehensive look at groundwater use.
+
+2.  IN.WSWTo: Total self-supplied surface-water withdrawals, including both fresh and saline water. This will cover all surface-water usage. It complements IN.WGWTo.
+
+3.  IN.Wtotl: Most comprehensive measure that includes both groundwater and surface-water, fresh and saline. It gives a full picture of industrial water use.
+
+### Irrigation Use:
+
+-   IR.WFrTo: Total water withdrawals for irrigation, covering both groundwater and surface water.
+
+-   IR.RecWW: How much reclaimed water is being used, which could be an interesting aspect related to sustainability.
+
+-   IR.IrTot: Total acres irrigated, useful for understanding the scale of irrigation in different counties.
+
+-   IC.WFrTo: This is for specifying crop irrigation. It gives total water withdrawals specifically for crop irrigation.
+
+-   IG.WFrTo: For irrigation in golf courses, this variable provides total withdrawals and can help in understanding non-agricultural irrigation demands.
+
+    ### Measuring units
+
+-   Median household income in dollars.
+
+-   Water withdrawal and usage variables, measured in Million Gallons per Day (Mgal/d).
+
+-   Per capita water usage rates, measured in gallons/day.
+
+-   Areas that are irrigated, measured in thousand acres.
+
+    ```{r}
+    cleaned_waterusage <- waterusage %>%
+      select(STATE, STATEFIPS, COUNTY, COUNTYFIPS, FIPS, YEAR, FIPS_Code,
+             `TP.TotPop`, `DO.WFrTo`, `DO.SSPCp`, `DO.PSPCp`, `DO.WDelv`,
+             `IN.WGWTo`, `IN.WSWTo`, `IN.Wtotl`,
+             `IR.WFrTo`, `IR.RecWW`, `IR.IrTot`, `IC.WFrTo`, `IG.WFrTo`,) %>%
+      rename(
+        State_Abbrev = STATE,
+        State_FIPS = STATEFIPS,
+        County_Name = COUNTY,
+        County_FIPS = COUNTYFIPS,
+        Data_Year = YEAR,
+        Total_Population = `TP.TotPop`,
+        Domestic_Total_Self_Supplied = `DO.WFrTo`,
+        Domestic_Per_Capita_Self_Supplied = `DO.SSPCp`,
+        Domestic_Per_Capita_Publicly_Supplied = `DO.PSPCp`,
+        Domestic_Total_Use = `DO.WDelv`,
+        Industrial_Total_Groundwater = `IN.WGWTo`,
+        Industrial_Total_SurfaceWater = `IN.WSWTo`,
+        Industrial_Total_Water = `IN.Wtotl`,
+        Total_Irrigation_Withdrawal = `IR.WFrTo`,
+        Reclaimed_Water_Irrigation = `IR.RecWW`,
+        Total_Acres_Irrigated = `IR.IrTot`,
+        Crop_Irrigation_Withdrawal = `IC.WFrTo`,
+        Golf_Irrigation_Withdrawal = `IG.WFrTo`,
+        )
+    ```
+
+## Merging
+
+```{r}
+
+# Check for duplicate FIPS in each data frame
+sum(duplicated(cleaned_waterusage$FIPS))
+sum(duplicated(cleaned_incomedata$FIPS))
+
+# Check the data type of FIPS in both data frames
+class(cleaned_waterusage$FIPS)
+class(cleaned_incomedata$FIPS)
+
+# Converting FIPS in incomedata to integer
+cleaned_incomedata$FIPS <- as.integer(cleaned_incomedata$FIPS)
+
+
+# Merge incomedata and cleaned_waterusage by FIPS using inner join
+merged_data <- inner_join(cleaned_waterusage, cleaned_incomedata, by = "FIPS")
+
+# Check the first few rows of the merged data
+head(merged_data)
+
+# Inspect the structure of the merged dataset
+str(merged_data)
+summary(merged_data)
+
+# Check for missing values
+colSums(is.na(merged_data))
+
+
+
+
+```
+
+```{r}
+# Convert all columns to numeric except for State_Abbrev, County, County_Name, and FIPS_Code
+merged_data_numeric <- merged_data %>% 
+  mutate(across(-c(State_Abbrev, County, County_Name, FIPS_Code), as.numeric))
+
+# Check to see if the conversion worked
+str(merged_data_numeric)
+
+# Check for missing values after conversion
+colSums(is.na(merged_data_numeric))
+
+# Reclaimed_Water_Irrigation has 2041 out of 3220 observations NAs
+# Crop_Irrigation_Withdrawal & Golf_Irrigation_Withdrawaleach has 1134 NAs
+# Domestic_Per_Capita_Self_Supplied has 190NAs
+# Median_Income has only 1
+
+# Remove rows where any of the specified columns have NA values
+cleaned_merged_data <- merged_data_numeric %>% 
+  drop_na(Domestic_Per_Capita_Self_Supplied, Domestic_Per_Capita_Publicly_Supplied, Median_Income)
+
+```
+
+## LIST OF PLOTS
+
+### Scatterplots:
+
+```{r}
+library(ggplot2)
+
+# Example with Domestic_Total_Self_Supplied
+ggplot(merged_data_numeric, aes(x = Median_Income, y = Domestic_Total_Self_Supplied)) +
+  geom_point() +
+  ggtitle("Scatterplot of Median Income vs Domestic Total Self-Supplied Water")
+```
+
+### Plots that correct for population size:
+
+```{r}
+# Example with Domestic_Per_Capita_Self_Supplied
+ggplot(merged_data_numeric, aes(x = Median_Income, y = Domestic_Per_Capita_Self_Supplied)) +
+  geom_point() +
+  ggtitle("Scatterplot of Median Income vs Domestic Per Capita Self-Supplied Water")
+```
+
+### Column plots:
+
+For plotting water usage variables by county, sorted by the county
+
+x = county (sorted), y = \[water usage\]
+
+```{r}
+# Example with Domestic_Total_Self_Supplied
+ggplot(merged_data_numeric, aes(x = reorder(FIPS, -Domestic_Total_Self_Supplied), y = Domestic_Total_Self_Supplied)) +
+  geom_col(aes(fill=Median_Income)) +
+  ggtitle("Column Plot of Domestic Total Self-Supplied Water by County") +
+  theme(axis.text.x = element_blank())+
+  scale_fill_continuous(low="lightblue", high = "red")
+
+```
+
+#### Stacked column plots, color by median income:
+
+```{r}
+# Example with Domestic and Industrial Total Water Use
+ggplot(merged_data_numeric, aes(x = reorder(FIPS, Domestic_Total_Use), fill = Total_Population)) +
+  geom_bar(aes(y = Domestic_Total_Use), stat = "identity") +
+  ggtitle("Stacked Column Plot by County, Colored by Median Income") +
+  theme(axis.text.x = element_blank())+
+  scale_fill_continuous(low="lightblue", high = "red")
+
+```
+
+### Map (chloropleth)
+
+```{r}
+library(sf)
+
+us_counties <- st_read("cb_2018_us_county_20m.shp") 
+
+us_counties2 <- us_counties %>%
+  mutate(FIPS = as.numeric(GEOID))%>%
+  left_join(merged_data_numeric, by = "FIPS")
+
+ggplot() +
+  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+  scale_fill_viridis_c() + # or use any other color scale you prefer
+  theme_minimal() +
+  labs(fill = "Domestic Total Self-Supplied",
+       title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
+
+
+
+p <- ggplot() +
+     geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+     scale_fill_viridis_c() +
+     theme_minimal() +
+     labs(fill = "Domestic Total Self-Supplied",
+          title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
+
+# Save the plot with a width of 10 inches and a height of 5 inches
+ggsave("your_plot.png", plot = p, width = 10, height = 5)
+
+```
+
+
+### Per capita consumption of each category
+
+```{r}
+library(tidyquant)
+
+# Scatterplot for Median Income vs Domestic_Total_Use
+ggplot(merged_data_numeric, aes(x=Median_Income, y = Domestic_Total_Use)) +
+  geom_point() +
+  labs(title = "Scatterplot of Median Income vs Domestic Total Water Use",
+       x = "Median Income", y = "Domestic Total Water Use")
+
+# Scatterplot for Median Income vs Total_Irrigation_Withdrawal
+ggplot(merged_data_numeric, aes(x=Median_Income, y = Total_Irrigation_Withdrawal)) +
+  geom_point() +
+  labs(title = "Scatterplot of Median Income vs Total Irrigation Withdrawal",
+       x = "Median Income", y = "Total Irrigation Withdrawal")
+
+# Scatterplot for log10(Total_Population) vs log10(Domestic_Total_Use)
+ggplot(merged_data_numeric, aes(x=log10(Total_Population), y = log10(Domestic_Total_Use))) +
+  geom_point() +
+  geom_smooth(aes(color = NULL), se=TRUE) +
+  geom_xsidedensity(
+      aes(y = after_stat(density)),
+      alpha = 0.5, size = 1, position = "stack"
+  ) +
+  geom_ysidedensity(
+      aes(x = after_stat(density)),
+      alpha = 0.5, size = 1, position = "stack"
+  ) +
+  scale_color_tq() +
+  scale_fill_tq() +
+  theme_tq() + 
+  labs(title = "Log-Transformed Scatterplot of Population vs Domestic Total Water Use",
+       subtitle = "ggside density",
+       x = "Log10(Total Population)", y = "Log10(Domestic Total Water Use)") +
+  theme(
+      ggside.panel.scale.x = 0.4,
+      ggside.panel.scale.y = 0.4
+  )
+
+```
