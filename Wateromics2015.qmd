@@ -348,10 +348,10 @@ us_counties2 <- us_counties %>%
   left_join(merged_data_numeric, by = "FIPS")
 
 ggplot() +
-  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+  geom_sf(data = us_counties2, aes(fill = Median_Income), color = NA) +
   scale_fill_viridis_c() + # or use any other color scale you prefer
   theme_minimal() +
-  labs(fill = "Domestic Total Self-Supplied",
+  labs(fill = "Median Income",
        title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
 
 
@@ -487,7 +487,7 @@ us_counties3$Domestic_Total_Use_log <- log1p(us_counties3$Domestic_Total_Use)
 
 # Create the plot
 p_contiguous_us_total <- ggplot() +
-  geom_sf(data = us_counties3, aes(fill = exp(Domestic_Total_Use_log)), color = NA) +
+  geom_sf(data = us_counties3, aes(fill = Domestic_Total_Use_log), color = NA) +
   scale_fill_viridis_c(
     breaks = c(5, 20, 100, 500, max(us_counties3$Domestic_Total_Use)),
     labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"),
@@ -527,3 +527,71 @@ print(p_contiguous_us_total_quantiles)
 ```
 
 It seems the majority of counties use water in the mid-range (40%-80%). There are some noticeable patches, especially in the West and Southwest, where water usage is in the top 20%.
+
+
+```{r}
+# Compute quantile breaks for Domestic_Total_Use_log
+breaks_quantiles <- quantile(us_counties3$Domestic_Total_Use_log, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1))
+
+# Plot the choropleth map with the new breakpoints
+p_contiguous_us_total_percapita <- ggplot() +
+  geom_sf(data = us_counties3, aes(fill = log(Domestic_Total_Use/Total_Population)), color = NA) +
+  scale_fill_viridis_c(
+    breaks = breaks_quantiles[-1], # Omit the first value (0 quantile) for breaks
+    labels = c("Lowest 20%", "20%-40%", "40%-60%", "60%-80%", "Top 20%"),
+    guide = guide_colorbar(title = "Value")
+  ) +
+  theme_minimal() +
+  labs(fill = "Log(Domestic_Total_Use)",
+       title = "Choropleth Map of Log Transformed per capita Domestic Total Use Water by County Quantiles") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_total_percapita)
+
+```
+
+
+```{r}
+# Compute quantile breaks for Domestic_Total_Use_log
+breaks_quantiles <- quantile(us_counties3$Domestic_Total_Use_log, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1))
+
+# Plot the choropleth map with the new breakpoints
+p_contiguous_us_medianincome <- ggplot() +
+  geom_sf(data = us_counties2, aes(fill = Median_Income), color = NA) +
+  scale_fill_viridis_c(
+    breaks = breaks_quantiles[-1], # Omit the first value (0 quantile) for breaks
+    labels = c("Lowest 20%", "20%-40%", "40%-60%", "60%-80%", "Top 20%"),
+    guide = guide_colorbar(title = "Value")
+  ) +
+  theme_minimal() +
+  labs(fill = "Log(Domestic_Total_Use)",
+       title = "Choropleth Map of Median Income") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_medianincome)
+
+```
+
+```{r}
+# Compute quantile breaks for Domestic_Total_Use_log
+breaks_quantiles <- quantile(us_counties3$Domestic_Total_Use_log, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1))
+
+# Plot the choropleth map with the new breakpoints
+p_contiguous_us_pop <- ggplot() +
+  geom_sf(data = us_counties2, aes(fill = log(Total_Population)), color = NA) +
+  scale_fill_viridis_c(
+    breaks = breaks_quantiles[-1], # Omit the first value (0 quantile) for breaks
+    labels = c("Lowest 20%", "20%-40%", "40%-60%", "60%-80%", "Top 20%"),
+    guide = guide_colorbar(title = "Value")
+  ) +
+  theme_minimal() +
+  labs(fill = "Log(Domestic_Total_Use)",
+       title = "Choropleth Map of population") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_pop)
+
+```
