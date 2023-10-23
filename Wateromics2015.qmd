@@ -47,7 +47,7 @@ waterusage <- waterusage %>%
 
 ## To calculate the median household income
 
-In the income data, we have an "Estimate" and a "Margin of Error." The margin of error provides a range within which the true value HI!!!!likely falls. For a precise analysis, we will use both in calculating the lower and upper bounds of the estimated median income. Then these bounds can be averaged to create a single, more robust figure that accounts for the estimated range of incomes.
+In the income data, we have an "Estimate" and a "Margin of Error." The margin of error provides a range within which the true value highly likely falls. For a precise analysis, we will use both in calculating the lower and upper bounds of the estimated median income. Then these bounds can be averaged to create a single, more robust figure that accounts for the estimated range of incomes.
 
 This approach will account for the variability in the estimates and present a more accurate range of the median income values across different counties.
 
@@ -111,45 +111,45 @@ cleaned_incomedata$FIPS <- str_replace_all(cleaned_incomedata$FIPS, "0500000US0?
 
 ### Domestic Use:
 
-1.  **DO.WFrTo**: The total self-supplied withdrawals, which is a comprehensive measure of domestic water use without public supply.
+1.  **Domestic_Total_Self_Supplied (DO.WFrTo)**: The total self-supplied withdrawals, which is a comprehensive measure of domestic water use without public supply, meaning it's not provided by a public utility. It gives an idea of how much water households are sourcing themselves. Example: Wells or streams.
 
-2.  **DO.SSPCp**: This is the per capita self-supplied water use. It's already normalized by population and will be useful for direct comparisons.
+2.  **Domestic_Per_Capita_Self_Supplied (DO.SSPCp)**: This is the per capita self-supplied water use. It's already normalized by population and will be useful for direct comparisons between counties of different sizes.As in each person self-supplies an average of 20 gallons/day.
 
-3.  **DO.PSPCp**: This is the per capita use for publicly supplied water, another metric normalized by population.
+3.  **Domestic_Per_Capita_Publicly_Supplied (DO.PSPCp)**: This is the per capita use for publicly supplied water, another metric normalized by population.
 
-4.  **DO.WDelv**: This is the total use, which includes both withdrawals and deliveries. It's the most complete measure of water use at the domestic level.
+4.  **Domestic_Total_Use (DO.WDelv)**: This variable combines both self-supplied and publicly supplied water to give a complete measure of domestic water use.
 
 -   Depending on the granularity of the analysis, we can either focus on the most comprehensive measure (DO-WDelv) or break it down to see if self-supplied vs. publicly supplied makes a difference in the correlation with income (DO-SSPCp and DO-PSPCp).
 
 ### Industrial Use:
 
-1.  IN.WGWTo: Total self-supplied groundwater withdrawals, both fresh and saline. It will provide a comprehensive look at groundwater use.
+1.  **Industrial_Total_Groundwater (IN.WGWTo)**: This measures the total amount of groundwater used by industries.
 
-2.  IN.WSWTo: Total self-supplied surface-water withdrawals, including both fresh and saline water. This will cover all surface-water usage. It complements IN.WGWTo.
+2.  **Industrial_Total_SurfaceWater (IN.WSWTo)**: Total surface-water withdrawals, including both fresh and saline water. Measuring how much surface water industries are self-supplying.
 
-3.  IN.Wtotl: Most comprehensive measure that includes both groundwater and surface-water, fresh and saline. It gives a full picture of industrial water use.
+3.  **Industrial_Total_Water (IN.Wtotl)**: This combines the above two to give a complete measure of industrial water use.
 
 ### Irrigation Use:
 
--   IR.WFrTo: Total water withdrawals for irrigation, covering both groundwater and surface water.
+-   **Total_Irrigation_Withdrawal (IR.WFrTo)**: Total water withdrawals for irrigation, covering both groundwater and surface water.
 
--   IR.RecWW: How much reclaimed water is being used, which could be an interesting aspect related to sustainability.
+-   **Reclaimed_Water_Irrigation (IR.RecWW)**: How much reclaimed water (treated wastewater) is being used, which could be an interesting aspect related to sustain
 
--   IR.IrTot: Total acres irrigated, useful for understanding the scale of irrigation in different counties.
+-   **Total_Acres_Irrigated (IR.IrTot)**: Total acres irrigated, useful for understanding the scale of irrigation in different counties.
 
--   IC.WFrTo: This is for specifying crop irrigation. It gives total water withdrawals specifically for crop irrigation.
+-   **Crop_Irrigation_Withdrawal (IC.WFrTo)**: Specifies the total water withdrawals specifically for crop irrigation.
 
--   IG.WFrTo: For irrigation in golf courses, this variable provides total withdrawals and can help in understanding non-agricultural irrigation demands.
+-   **Golf_Irrigation_Withdrawal (IG.WFrTo)**: This measures the water withdrawals for golf course irrigation, giving an idea of non-agricultural irrigation demands.
 
-    ### Measuring units
+### Measuring units
 
--   Median household income in dollars.
+1.  Median household income in dollars.
 
--   Water withdrawal and usage variables, measured in Million Gallons per Day (Mgal/d).
+2.  Water withdrawal and usage variables, measured in Million Gallons per Day (Mgal/d).
 
--   Per capita water usage rates, measured in gallons/day.
+3.  Per capita water usage rates, measured in gallons/day.
 
--   Areas that are irrigated, measured in thousand acres.
+4.  Areas that are irrigated, measured in thousand acres.
 
     ```{r}
     cleaned_waterusage <- waterusage %>%
@@ -208,9 +208,6 @@ summary(merged_data)
 # Check for missing values
 colSums(is.na(merged_data))
 
-
-
-
 ```
 
 ```{r}
@@ -246,6 +243,13 @@ library(ggplot2)
 ggplot(merged_data_numeric, aes(x = Median_Income, y = Domestic_Total_Self_Supplied)) +
   geom_point() +
   ggtitle("Scatterplot of Median Income vs Domestic Total Self-Supplied Water")
+```
+
+```{r}
+# Example with Domestic_Total_Use
+ggplot(merged_data_numeric, aes(x = Median_Income, y = Domestic_Total_Use)) +
+  geom_point() +
+  ggtitle("Scatterplot of Median Income vs Domestic Total Use")
 ```
 
 ### Plots that correct for population size:
@@ -284,39 +288,6 @@ ggplot(merged_data_numeric, aes(x = reorder(FIPS, Domestic_Total_Use), fill = To
   scale_fill_continuous(low="lightblue", high = "red")
 
 ```
-
-### Map (chloropleth)
-
-```{r}
-library(sf)
-
-us_counties <- st_read("cb_2018_us_county_20m.shp") 
-
-us_counties2 <- us_counties %>%
-  mutate(FIPS = as.numeric(GEOID))%>%
-  left_join(merged_data_numeric, by = "FIPS")
-
-ggplot() +
-  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
-  scale_fill_viridis_c() + # or use any other color scale you prefer
-  theme_minimal() +
-  labs(fill = "Domestic Total Self-Supplied",
-       title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
-
-
-
-p <- ggplot() +
-     geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
-     scale_fill_viridis_c() +
-     theme_minimal() +
-     labs(fill = "Domestic Total Self-Supplied",
-          title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
-
-# Save the plot with a width of 10 inches and a height of 5 inches
-ggsave("your_plot.png", plot = p, width = 10, height = 5)
-
-```
-
 
 ### Per capita consumption of each category
 
@@ -359,3 +330,200 @@ ggplot(merged_data_numeric, aes(x=log10(Total_Population), y = log10(Domestic_To
   )
 
 ```
+
+### Map (Choropleth)
+
+#### Total Dometsic Self Supplied
+
+```{r}
+library(sf)
+
+## first plot
+
+# Data loading and preprocessing
+us_counties <- st_read("cb_2018_us_county_20m.shp") 
+
+us_counties2 <- us_counties %>%
+  mutate(FIPS = as.numeric(GEOID))%>%
+  left_join(merged_data_numeric, by = "FIPS")
+
+ggplot() +
+  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+  scale_fill_viridis_c() + # or use any other color scale you prefer
+  theme_minimal() +
+  labs(fill = "Domestic Total Self-Supplied",
+       title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
+
+
+
+p <- ggplot() +
+     geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+     scale_fill_viridis_c() +
+     theme_minimal() +
+     labs(fill = "Domestic Total Self-Supplied",
+          title = "Choropleth Map of Domestic Total Self-Supplied Water by County")
+
+# Save the plot with a width of 10 inches and a height of 5 inches
+ggsave("your_plot.png", plot = p, width = 10, height = 5)
+
+
+
+# Create the plot with zoom on contiguous U.S.
+p_contiguous_us <- ggplot() +
+  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Self_Supplied), color = NA) +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(fill = "Domestic Total Self-Supplied",
+       title = "Choropleth Map of Domestic Total Self-Supplied Water by County") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us)
+
+# Save the plot with desired dimensions
+ggsave("contiguous_us_plot_D_S.png", plot = p_contiguous_us, width = 10, height = 5)
+
+
+
+```
+
+#### Highest county in total self-supplied withdrawals
+
+```{r}
+# Sorting the data frame based on Domestic_Total_Self_Supplied in descending order
+sorted_us_counties_by_domestic_self_supplied <- us_counties2 %>% arrange(desc(Domestic_Total_Self_Supplied))
+
+# Checking the first row to get the county with the highest Domestic_Total_Self_Supplied
+highest_self_supplied_county_row <- sorted_us_counties_by_domestic_self_supplied[1, ]
+
+# Display the county name and the value
+highest_self_supplied_county_name <- highest_self_supplied_county_row$NAME
+highest_self_supplied_value_mgal <- highest_self_supplied_county_row$Domestic_Total_Self_Supplied
+
+cat("The county with the highest Domestic_Total_Self_Supplied is", highest_self_supplied_county_name, 
+    "with a value of", highest_self_supplied_value_mgal, "million gallons per day.")
+
+
+```
+
+#### Total Domestic Use Map
+
+```{r}
+
+# Create the plot with zoom on contiguous U.S. focusing on Total Domestic Use
+p_contiguous_us_Domestic_Total_Use <- ggplot() +
+  geom_sf(data = us_counties2, aes(fill = Domestic_Total_Use), color = NA) +
+  scale_fill_viridis_c(
+   
+  ) +
+  theme_minimal() +
+  labs(fill = "Domestic Total Use",
+       title = "Choropleth Map of Domestic Total Use by County") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_Domestic_Total_Use)
+
+# Save the plot with your desired dimensions
+ggsave("contiguous_us_plot_Domestic_Total_Use.png", plot = p_contiguous_us_Domestic_Total_Use, width = 10, height = 5)
+
+```
+
+```{r}
+
+us_counties3 <- us_counties %>%
+  mutate(FIPS = as.numeric(GEOID))%>%
+  left_join(cleaned_waterusage, by = "FIPS")
+
+ggplot(us_counties3, aes(x=Domestic_Total_Use))+
+  geom_histogram(binwidth = 10)
+
+# Create the plot with zoom on contiguous U.S.
+p_contiguous_us_total <- ggplot() +
+  geom_sf(data = us_counties3, aes(fill = Domestic_Total_Use), color = NA) +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(fill = "Domestic_Total_Use",
+       title = "Choropleth Map of Domestic Total Use Water by County") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_total)
+
+# Save the plot with desired dimensions
+ggsave("contiguousssss.png", plot = p_contiguous_us_total, width = 10, height = 5)
+
+thristy <- us_counties3 %>%
+  arrange(desc(Domestic_Total_Use)) %>%
+  head(5)
+
+```
+
+Using breakpoints for better visualization
+
+```{r}
+
+# Histogram of Domestic_Total_Use
+ggplot(us_counties3, aes(x = Domestic_Total_Use)) +
+  geom_histogram(binwidth = 10, fill = "blue", alpha = 0.7) +  # binwidth controls the width of the bars
+  labs(title = "Histogram of Domestic Total Use",
+       x = "Domestic Total Use",
+       y = "Frequency") +
+  theme_minimal()
+
+# Using log transformation
+ggplot(us_counties3, aes(x = Domestic_Total_Use)) +
+  geom_histogram(binwidth = 1, fill = "blue", alpha = 0.7) +
+  labs(title = "Log-transformed Histogram of Domestic Total Use",
+       x = "Domestic Total Use",
+       y = "Frequency") +
+  scale_x_log10() +
+  theme_minimal()
+
+library(viridis)
+
+# Add the log-transformed Domestic Total Use to the data
+us_counties3$Domestic_Total_Use_log <- log1p(us_counties3$Domestic_Total_Use)
+
+# Create the plot
+p_contiguous_us_total <- ggplot() +
+  geom_sf(data = us_counties3, aes(fill = exp(Domestic_Total_Use_log)), color = NA) +
+  scale_fill_viridis_c(
+    breaks = c(5, 20, 100, 500, max(us_counties3$Domestic_Total_Use)),
+    labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"),
+    guide = guide_colorbar(title = "Value")
+  ) +
+  theme_minimal() +
+  labs(fill = "Domestic_Total_Use",
+       title = "Choropleth Map of Domestic Total Use Water by County") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_total)
+```
+
+Using quantiles instead of random breakpoints
+
+```{r}
+# Compute quantile breaks for Domestic_Total_Use_log
+breaks_quantiles <- quantile(us_counties3$Domestic_Total_Use_log, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1))
+
+# Plot the choropleth map with the new breakpoints
+p_contiguous_us_total_quantiles <- ggplot() +
+  geom_sf(data = us_counties3, aes(fill = Domestic_Total_Use_log), color = NA) +
+  scale_fill_viridis_c(
+    breaks = breaks_quantiles[-1], # Omit the first value (0 quantile) for breaks
+    labels = c("Lowest 20%", "20%-40%", "40%-60%", "60%-80%", "Top 20%"),
+    guide = guide_colorbar(title = "Value")
+  ) +
+  theme_minimal() +
+  labs(fill = "Log(Domestic_Total_Use)",
+       title = "Choropleth Map of Log Transformed Domestic Total Use Water by County Quantiles") + 
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 49), expand = FALSE)
+
+# Display the map
+print(p_contiguous_us_total_quantiles)
+
+```
+
+It seems the majority of counties use water in the mid-range (40%-80%). There are some noticeable patches, especially in the West and Southwest, where water usage is in the top 20%.
